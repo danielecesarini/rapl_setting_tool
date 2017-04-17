@@ -1,0 +1,659 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import struct
+import argparse
+from terminaltables import AsciiTable
+
+############## INTERNAL VARIABLES ##############
+num_core = 0
+num_skt = 0
+num_core_skt = 0
+power_lanes = ["PKG1", "PKG2", "DRAM", "PP0", "PP1"]
+
+############## ARCHITECTURE INFO ##############
+power_unit = None
+energy_unit = None
+time_unit = None
+
+pkg_thermal_spec_power = None
+pkg_minimum_power = None
+pkg_maximum_power = None
+pkg_maximum_time_windows = None
+
+dram_thermal_spec_power = None
+dram_minimum_power = None
+dram_maximum_power = None
+dram_maximum_time_windows = None
+
+pp0_priority_level = None
+
+pp1_priority_level = None
+
+############## MSR ADDRESSES ##############
+MSR_RAPL_POWER_UNIT = 0x606
+
+MSR_PKG_POWER_LIMIT = 0x610
+MSR_PKG_ENERGY_STATUS = 0x611
+MSR_PKG_PERF_STATUS = 0x613
+MSR_PKG_POWER_INFO = 0x614
+
+MSR_DRAM_POWER_LIMIT = 0x618
+MSR_DRAM_ENERGY_STATUS = 0x619
+MSR_DRAM_PERF_STATUS = 0x61b
+MSR_DRAM_POWER_INFO = 0x61c
+
+# Only used in Xeon architecture (PP0 -> core)
+MSR_PP0_POWER_LIMIT = 0x638
+MSR_PP0_ENERGY_STATUS = 0x639
+MSR_PP0_POLICY   = 0x63a
+MSR_PP0_PERF_STATUS = 0x63b
+
+# Not used in Xeon architecture (PP1 -> graphic)
+MSR_PP1_POWER_LIMIT = 0x640
+MSR_PP1_ENERGY_STATUS = 0x641
+MSR_PP1_POLICY = 0x642
+
+##################################################
+
+# Read a MSR registry
+def read_msr(msr, skt=None, core=None):
+    cpu = None
+    if skt is None:
+        cpu = 0
+    elif core is None:
+        cpu = skt * num_core_skt
+    else:
+        cpu = skt * num_core_skt + core
+
+    try:
+        f = os.open('/dev/cpu/%d/msr' % (cpu,), os.O_RDONLY)
+    except:
+        sys.stderr.write("[ERROR] Failed to open /dev/cpu/%d/msr!\n"  % (cpu))
+        exit(-1)
+
+    os.lseek(f, msr, os.SEEK_SET)
+
+    try:
+        val = struct.unpack('Q', os.read(f, 8))[0]
+    except:
+        val = None
+
+    os.close(f)
+
+    return val
+
+# Write a MSR registry
+def write_msr(msr, val, skt=None, core=None):
+    cpu = None
+    if skt is None:
+        cpu = 0
+    elif core is None:
+        cpu = skt * num_core_skt
+    else:
+        cpu = skt * num_core_skt + core
+
+    try:
+        f = os.open('/dev/cpu/%d/msr' % (cpu,), os.O_WRONLY)
+    except:
+        sys.stderr.write("[ERROR] Failed to open /dev/cpu/%d/msr!\n"  % (cpu))
+        exit(-1)
+
+    os.lseek(f, msr, os.SEEK_SET)
+
+    try:
+        os.write(f, struct.pack('Q', val))
+    except:
+        pass
+
+    os.close(f)
+
+# Check requisites of the system
+def check_requirements():
+    # Check root permission
+    uid = os.getuid()
+    if uid != 0:
+        sys.stderr.write("[WARNING] Need to be root to execute this software!\n")
+        exit(-1)
+
+    # Check if MSR module is loaded
+    if not os.path.exists("/dev/cpu/0/msr"):
+        sys.stderr.write("[WARNING] MSR module is not loaded!\n")
+        exit(-2)
+
+# Default initial configuration
+def init_config():
+    global num_core, num_skt, num_core_skt
+    global init_rapl_config, nominal_frequency, power_unit, energy_unit, time_unit
+    global pkg_thermal_spec_power, pkg_minimum_power, pkg_maximum_power, pkg_maximum_time_windows
+    global dram_thermal_spec_power, dram_minimum_power, dram_maximum_power, dram_maximum_time_windows
+
+    # Set affinity on a specific core
+    #core = 0
+    #os.system("taskset -cp %d %d >/dev/null 2>&1" % (core, os.getpid()))
+
+    # Read the number of virtual CPUs and sockets
+    with open("/proc/cpuinfo", "r") as f:
+        conf_lines = f.readlines()
+        for cl in conf_lines:
+            if "physical id" in cl:
+                num_core += 1
+                skt = cl.replace(" ", "").split(":")[1]
+                if (int(skt)+1) > num_skt:
+                    num_skt += 1
+    num_core_skt = num_core / num_skt
+
+    rapl_power_unit = read_msr(MSR_RAPL_POWER_UNIT)
+    pkg_power_info = read_msr(MSR_PKG_POWER_INFO)
+    dram_power_info = read_msr(MSR_DRAM_POWER_INFO)
+
+    # Unit conversions specified in the RAPL chapter of Intel manual
+    if rapl_power_unit is not None:
+        power_unit = pow(0.5, rapl_power_unit & 0xF)
+        energy_unit = pow(0.5, (rapl_power_unit >> 8) & 0x1F)
+        time_unit = pow(0.5, (rapl_power_unit >> 16) & 0xF)
+
+    if rapl_power_unit is not None and pkg_power_info is not None:
+        pkg_thermal_spec_power = (pkg_power_info & 0x7FFF) * power_unit
+        pkg_minimum_power = ((pkg_power_info >> 16) & 0x7FFF) * power_unit
+        pkg_maximum_power = ((pkg_power_info >> 32) & 0x7FFF) * power_unit
+        pkg_maximum_time_windows = ((pkg_power_info >> 48) & 0x7FFF) * time_unit
+
+    if rapl_power_unit is not None and dram_power_info is not None:
+        dram_thermal_spec_power = (dram_power_info & 0x7FFF) * power_unit
+        dram_minimum_power = ((dram_power_info >> 16) & 0x7FFF) * power_unit
+        dram_maximum_power = ((dram_power_info >> 32) & 0x7FFF) * power_unit
+        dram_maximum_time_windows = ((dram_power_info >> 48) & 0x7FFF) * time_unit
+
+# Read package 1 RAPL
+def read_pkg_1_rapl(skt):
+    msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    if msr_rapl == None:
+        return None, None, None, None, None
+
+    power_limit = (msr_rapl & 0x7FFF) * power_unit
+    enable = True if (msr_rapl >> 15) & 0x1 else False
+    clamping = True if (msr_rapl >> 16) & 0x1 else False
+    time_limit = (((msr_rapl >> 17) & 0x7F) * time_unit) * 1000.0
+    lock = True if (msr_rapl >> 63) & 0x1 else False
+
+    return power_limit, enable, clamping, time_limit, lock
+
+# Read package 2 RAPL
+def read_pkg_2_rapl(skt):
+    msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    if msr_rapl == None:
+        return None, None, None, None, None
+
+    msr_rapl = (msr_rapl >> 32)
+
+    power_limit = (msr_rapl & 0x7FFF) * power_unit
+    enable = True if (msr_rapl >> 15) & 0x1 else False
+    clamping = True if (msr_rapl >> 16) & 0x1 else False
+    time_limit = (((msr_rapl >> 17) & 0x7F) * time_unit) * 1000.0
+    lock = True if (msr_rapl >> 63) & 0x1 else False
+
+    return power_limit, enable, clamping, time_limit, lock
+
+# Read dram RAPL
+def read_dram_rapl(skt):
+    msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
+    if msr_rapl == None:
+        return None, None, None, None, None
+
+    power_limit = (msr_rapl & 0x7FFF) * power_unit
+    enable = True if (msr_rapl >> 15) & 0x1 else False
+    clamping = True if (msr_rapl >> 16) & 0x1 else False
+    time_limit = (((msr_rapl >> 17) & 0x7F) * time_unit) * 1000.0
+    lock = True if (msr_rapl >> 30) & 0x1 else False
+
+    return power_limit, enable, clamping, time_limit, lock
+
+# Read PP0 RAPL
+def read_pp0_rapl(skt):
+    msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    if msr_rapl == None:
+        return None, None, None, None, None, None
+
+    power_limit = (msr_rapl & 0x7FFF) * power_unit
+    enable = True if (msr_rapl >> 15) & 0x1 else False
+    clamping = True if (msr_rapl >> 16) & 0x1 else False
+    time_limit = (((msr_rapl >> 17) & 0x7F) * time_unit) * 1000.0
+    lock = True if (msr_rapl >> 30) & 0x1 else False
+
+    msr_rapl = read_msr(MSR_PP0_POLICY, skt)
+    if msr_rapl == None:
+        return power_limit, enable, clamping, time_limit, lock, None
+    else:
+        priority_level = msr_rapl & 0x1F
+        return power_limit, enable, clamping, time_limit, lock, priority_level
+
+# Read PP1 RAPL
+def read_pp1_rapl(skt):
+    msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+    if msr_rapl == None:
+        return None, None, None, None, None, None
+
+    power_limit = (msr_rapl & 0x7FFF) * power_unit
+    enable = True if (msr_rapl >> 15) & 0x1 else False
+    clamping = True if (msr_rapl >> 16) & 0x1 else False
+    time_limit = (((msr_rapl >> 17) & 0x7F) * time_unit) * 1000.0
+    lock = True if (msr_rapl >> 30) & 0x1 else False
+
+    msr_rapl = read_msr(MSR_PP1_POLICY, skt)
+    if msr_rapl == None:
+        return power_limit, enable, clamping, time_limit, lock, None
+    else:
+        priority_level = msr_rapl & 0x1F
+        return power_limit, enable, clamping, time_limit, lock, priority_level
+
+def read_pkg_pc_energy(skt):
+    msr_rapl = read_msr(MSR_PKG_ENERGY_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * energy_unit
+
+def read_pkg_pc_throttled_time(skt):
+    msr_rapl = read_msr(MSR_PKG_PERF_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * time_unit
+
+def read_dram_pc_energy(skt):
+    msr_rapl = read_msr(MSR_DRAM_ENERGY_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * energy_unit
+
+def read_dram_pc_throttled_time(skt):
+    msr_rapl = read_msr(MSR_DRAM_PERF_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * time_unit
+
+def read_pp0_pc_energy(skt):
+    msr_rapl = read_msr(MSR_PP0_ENERGY_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * energy_unit
+
+def read_pp0_pc_throttled_time(skt):
+    msr_rapl = read_msr(MSR_PP0_PERF_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * time_unit
+
+def read_pp1_pc_energy(skt):
+    msr_rapl = read_msr(MSR_PP1_ENERGY_STATUS, skt)
+    if msr_rapl == None:
+        return None
+
+    return (msr_rapl & 0xFFFFFFFF) * energy_unit
+
+# Set RAPL power limit in Watts
+def set_power_limit(skt, power_lane, power_limit):
+    # Convert to RAPL unit      
+    power_cap_rapl = int(round(power_limit / power_unit))
+
+    # Set only bits related to power limit
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    elif "DRAM" in power_lane:
+        msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
+    elif "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+
+    if msr_rapl is None:
+        return
+
+    if "PKG2" in power_lane:
+        msr_rapl = (msr_rapl & ~0x7FFF00000000) | (power_cap_rapl << 32)
+    else:
+        msr_rapl = (msr_rapl & ~0x7FFF) | power_cap_rapl
+
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
+    elif "DRAM" in power_lane:
+        write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
+    elif "PP0" in power_lane:
+        write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
+
+# Set RAPL time window in ms
+def set_time_window(skt, power_lane, time_window):
+    # Convert to RAPL unit
+    time_window_sec = time_window / 1000.0
+    time_window_rapl = int(round(time_window_sec / time_unit))
+
+    # Set only bits related to power limit
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    elif "DRAM" in power_lane:
+        msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
+    elif "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+
+    if msr_rapl is None:
+        return
+
+    if "PKG2" in power_lane:
+        msr_rapl = (msr_rapl & ~0xFE000000000000) | (time_window_rapl << 49)
+    else:
+        msr_rapl = (msr_rapl & ~0xFE0000) | (time_window_rapl << 17)
+
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
+    elif "DRAM" in power_lane:
+        write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
+    elif "PP0" in power_lane:
+        write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
+
+# Set RAPL enable limit
+def set_enable_limit(skt, power_lane, setting):
+    # Set only bits related to power limit
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    elif "DRAM" in power_lane:
+        msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
+    elif "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+
+    if msr_rapl is None:
+        return
+
+    setting_rapl = 0x1 if setting is True else 0x0
+
+    if "PKG2" in power_lane:
+        msr_rapl = (msr_rapl & ~0x800000000000) | (setting_rapl << 47)
+    else:
+        msr_rapl = (msr_rapl & ~0x8000) | (setting_rapl << 15)
+
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
+    elif "DRAM" in power_lane:
+        write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
+    elif "PP0" in power_lane:
+        write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
+
+# Set RAPL clamping limit
+def set_clamping_limit(skt, power_lane, setting):
+    # Set only bits related to power limit
+    msr_rapl = None
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    elif "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+
+    if msr_rapl is None:
+        return
+
+    setting_rapl = 0x1 if setting is True else 0x0
+
+    if "PKG2" in power_lane:
+        msr_rapl = (msr_rapl & ~0x1000000000000) | (setting_rapl << 48)
+    else:
+        msr_rapl = (msr_rapl & ~0x10000) | (setting_rapl << 16)
+
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
+    elif "PP0" in power_lane:
+        write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
+
+# Set RAPL lock
+def set_lock(skt, power_lane):
+    # Set only bits related to power limit
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
+    elif "DRAM" in power_lane:
+        msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
+    elif "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
+
+    if msr_rapl is None:
+        return
+
+    if "PKG2" in power_lane:
+        msr_rapl = (msr_rapl & ~0x8000000000000000) | (0x1 << 63)
+    else:
+        msr_rapl = (msr_rapl & ~0x80000000) | (0x1 << 31)
+
+    if "PKG1" in power_lane or "PKG2" in power_lane:
+        write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
+    elif "DRAM" in power_lane:
+        write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
+    elif "PP0" in power_lane:
+        write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
+
+def set_priority_level(skt, power_lane, priority_level):
+    # Set only bits related to power limit
+    if "PP0" in power_lane:
+        msr_rapl = read_msr(MSR_PP0_POLICY, skt)
+    elif "PP1" in power_lane:
+        msr_rapl = read_msr(MSR_PP1_POLICY, skt)
+
+    if msr_rapl is None:
+        return
+
+    msr_rapl = (msr_rapl & ~0xF) | priority_level
+
+    if "PP0" in power_lane:
+        write_msr(MSR_PP0_POLICY, msr_rapl, skt)
+    elif "PP1" in power_lane:
+        write_msr(MSR_PP1_POLICY, msr_rapl, skt)
+
+def print_conf():
+    # Configuration parameteres
+    table_data = []
+
+    socket_row = ["Conf Parameter"]
+    for s in range(num_skt):
+        socket_row.append("Socket " + str(s))
+    table_data.append(socket_row)
+
+    pkg_power_limit_1 = ["PKG1 power limit (W)"]
+    pkg_enable_1 = ["PKG1 enable limit"]
+    pkg_clamping_1 = ["PKG1 clamping limit"]
+    pkg_time_limit_1 = ["PKG1 time window (ms)"]
+    pkg_lock_1 = ["PKG1 lock"]
+    for s in range(num_skt):
+        power_limit, enable, clamping, time_limit, lock = read_pkg_1_rapl(s)
+        pkg_power_limit_1.append(power_limit)
+        pkg_enable_1.append(enable)
+        pkg_clamping_1.append(clamping)
+        pkg_time_limit_1.append(time_limit)
+        pkg_lock_1.append(lock)
+    table_data += [pkg_power_limit_1, pkg_time_limit_1, pkg_enable_1, pkg_clamping_1, pkg_lock_1]
+
+    pkg_power_limit_2 = ["PKG2 power limit (W)"]
+    pkg_enable_2 = ["PKG2 enable limit"]
+    pkg_clamping_2 = ["PKG2 clamping limit"]
+    pkg_time_limit_2 = ["PKG2 time window (ms)"]
+    pkg_lock_2 = ["PKG2 lock"]
+    for s in range(num_skt):
+        power_limit, enable, clamping, time_limit, lock = read_pkg_2_rapl(s)
+        pkg_power_limit_2.append(power_limit)
+        pkg_enable_2.append(enable)
+        pkg_clamping_2.append(clamping)
+        pkg_time_limit_2.append(time_limit)
+        pkg_lock_2.append(lock)
+    table_data += [pkg_power_limit_2, pkg_time_limit_2, pkg_enable_2, pkg_clamping_2, pkg_lock_2]
+
+    dram_power_limit = ["DRAM power limit (W)"]
+    dram_enable = ["DRAM enable limit"]
+    dram_time_limit = ["DRAM time window (ms)"]
+    dram_lock = ["DRAM lock"]
+    for s in range(num_skt):
+        power_limit, enable, clamping, time_limit, lock = read_dram_rapl(s)
+        dram_power_limit.append(power_limit)
+        dram_enable.append(enable)
+        dram_time_limit.append(time_limit)
+        dram_lock.append(lock)
+    table_data += [dram_power_limit, dram_time_limit, dram_enable, dram_lock]
+
+    pp0_power_limit = ["PP0 power limit (W)"]
+    pp0_enable = ["PP0 enable limit"]
+    pp0_clamping = ["PP0 clamping limit"]
+    pp0_time_limit = ["PP0 time window (ms)"]
+    pp0_priority_level = ["PP0 priority_level"]
+    pp0_lock = ["PP0 lock"]
+    for s in range(num_skt):
+        power_limit, enable, clamping, time_limit, lock, priority_level = read_pp0_rapl(s)
+        pp0_power_limit.append(power_limit)
+        pp0_enable.append(enable)
+        pp0_clamping.append(clamping)
+        pp0_time_limit.append(time_limit)
+        pp0_lock.append(lock)
+        pp0_priority_level.append(priority_level)
+    table_data += [pp0_power_limit, pp0_time_limit, pp0_enable, pp0_clamping, pp0_priority_level, pp0_lock]
+
+    pp1_power_limit = ["PP1 power limit (W)"]
+    pp1_enable = ["PP1 enable limit"]
+    pp1_clamping = ["PP1 clamping limit"]
+    pp1_time_limit = ["PP1 time window (ms)"]
+    pp1_priority_level = ["PP1 priority_level"]
+    pp1_lock = ["PP1 lock"]
+    for s in range(num_skt):
+        power_limit, enable, clamping, time_limit, lock, priority_level = read_pp1_rapl(s)
+        pp1_power_limit.append(power_limit)
+        pp1_enable.append(enable)
+        pp1_clamping.append(clamping)
+        pp1_time_limit.append(time_limit)
+        pp1_lock.append(lock)
+        pp1_priority_level.append(priority_level)
+    table_data += [pp1_power_limit, pp1_time_limit, pp1_enable, pp1_clamping, pp1_priority_level, pp1_lock]
+
+    table = AsciiTable(table_data)
+    print table.table
+
+    # Architectural parameteres
+    table_data = []
+
+    socket_row = ["Arch Parameter", "Value"]
+    table_data.append(socket_row)
+
+    table_data.append(["Time units (ms)", time_unit * 1000])
+    table_data.append(["Power units (mW)", power_unit * 1000])
+    table_data.append(["Energy units (uJ)", energy_unit * 1000000])
+
+    table_data.append(["PKG Thermal Spec Power (W)", pkg_thermal_spec_power])
+    table_data.append(["PKG Minimum Power (W)", pkg_minimum_power])
+    table_data.append(["PKG Maximum Power (W)", pkg_maximum_power])
+    table_data.append(["PKG Maximum Time Window (ms)", pkg_maximum_time_windows * 1000 if pkg_maximum_time_windows is not None else None])
+
+    table_data.append(["DRAM Thermal Spec Power (W)", dram_thermal_spec_power])
+    table_data.append(["DRAM Minimum Power (W)", dram_minimum_power])
+    table_data.append(["DRAM Maximum Power (W)", dram_maximum_power])
+    table_data.append(["DRAM Maximum Time Window (ms)", dram_maximum_time_windows * 1000 if dram_maximum_time_windows is not None else None])
+
+    table = AsciiTable(table_data)
+    print table.table
+
+    # Performance counters
+    table_data = []
+
+    socket_row = ["Perf counter"]
+    for s in range(num_skt):
+        socket_row.append("Socket " + str(s))
+    table_data.append(socket_row)
+
+    pkg_energy = ["PKG energy (J)"]
+    pkg_throttled = ["PKG throttled time (s)"]
+    dram_energy = ["DRAM energy (J)"]
+    dram_throttled = ["DRAM throttled time (s)"]
+    pp0_energy = ["PP0 energy (J)"]
+    pp0_throttled = ["PP0 throttled time (s)"]
+    pp1_energy = ["PP1 energy (J)"]
+    for s in range(num_skt):
+        pkg_energy.append(read_pkg_pc_energy(s))
+        pkg_throttled.append(read_pkg_pc_throttled_time(s))
+        dram_energy.append(read_dram_pc_energy(s))
+        dram_throttled.append(read_dram_pc_throttled_time(s))
+        pp0_energy.append(read_pp0_pc_energy(s))
+        pp0_throttled.append(read_pp0_pc_throttled_time(s))
+        pp1_energy.append(read_pp1_pc_energy(s))
+    table_data += [pkg_energy, pkg_throttled, dram_energy, dram_throttled, pp0_energy, pp0_throttled, pp1_energy]
+
+    table = AsciiTable(table_data)
+    print table.table
+
+if __name__ == "__main__":
+    check_requirements()
+
+    init_config()
+
+    parser = argparse.ArgumentParser(description='Tool for RAPL setting')
+    parser.add_argument('-r','--reset', help='Reset RAPL at maximum limit', required=False, action='store_true', default=False)
+    parser.add_argument('-s','--socket', help='Select socket to modify', required=False, type=int, choices=xrange(0, num_skt))
+    parser.add_argument('-p','--power-lane', help='Select the power lane to modify', required=False, choices=power_lanes)
+    parser.add_argument('-l','--power-limit', help='Set power limit in Watts', required=False, type=float)
+    parser.add_argument('-t','--time-window', help='Set time window in ms', required=False, type=float)
+    parser.add_argument('-el','--enable-limit', help='Force enable power limit', required=False, action='store_true', default=False)
+    parser.add_argument('-dl','--disable-limit', help='Force disable power limit', required=False, action='store_true', default=False)
+    parser.add_argument('-ec','--enable-clamping', help='Force enable clamping limit', required=False, action='store_true', default=False)
+    parser.add_argument('-dc','--disable-clamping', help='Force disable clamping limit', required=False, action='store_true', default=False)
+    parser.add_argument('-sl','--set-lock', help='Set lock for power lane (WARNING: all write attempts are ignored until next RESET!)', required=False, action='store_true', default=False)
+    parser.add_argument('-pl','--priority-level', help='Select the priority level for the power lane', required=False, type=int, choices=xrange(15))
+    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        print_conf()
+    else:
+        if args.reset is True:
+            print "reset"
+
+        if args.power_lane is not None:
+            sockets = []
+
+            if args.socket is not None:
+                sockets.append(args.socket)
+            else:
+                sockets = [i for i in range(num_skt)]
+
+            for skt in sockets:
+                if args.power_limit is not None:
+                    set_power_limit(skt, args.power_lane, args.power_limit)
+
+                if args.time_window is not None:
+                    set_time_window(skt, args.power_lane, args.time_window)
+
+                if args.enable_limit is True:
+                    set_enable_limit(skt, args.power_lane, True)
+                elif args.disable_limit is True:
+                    set_enable_limit(skt, args.power_lane, False)
+
+                if args.enable_clamping is True:
+                    set_clamping_limit(skt, args.power_lane, True)
+                elif args.disable_clamping is True:
+                    set_clamping_limit(skt, args.power_lane, False)
+
+                if args.set_lock is True:
+                    set_lock(skt, args.power_lane)
+
+                if args.priority_level is not None:
+                    set_priority_level(skt, args.power_lane, args.priority_level)
