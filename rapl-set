@@ -483,11 +483,11 @@ def print_conf():
     pkg_lock_1 = ["PKG1 lock"]
     for s in range(num_skt):
         power_limit, enable, clamping, time_limit, lock = read_pkg_1_rapl(s)
-        pkg_power_limit_1.append(power_limit)
-        pkg_enable_1.append(enable)
-        pkg_clamping_1.append(clamping)
-        pkg_time_limit_1.append(time_limit)
-        pkg_lock_1.append(lock)
+        pkg_power_limit_1.append(power_limit if power_limit is not None else "N/A")
+        pkg_enable_1.append(enable if enable is not None else "N/A")
+        pkg_clamping_1.append(clamping if clamping is not None else "N/A")
+        pkg_time_limit_1.append(time_limit if time_limit is not None else "N/A")
+        pkg_lock_1.append(lock if lock is not None else "N/A")
     table_data += [pkg_power_limit_1, pkg_time_limit_1, pkg_enable_1, pkg_clamping_1, pkg_lock_1]
 
     pkg_power_limit_2 = ["PKG2 power limit (W)"]
@@ -497,11 +497,11 @@ def print_conf():
     pkg_lock_2 = ["PKG2 lock"]
     for s in range(num_skt):
         power_limit, enable, clamping, time_limit, lock = read_pkg_2_rapl(s)
-        pkg_power_limit_2.append(power_limit)
-        pkg_enable_2.append(enable)
-        pkg_clamping_2.append(clamping)
-        pkg_time_limit_2.append(time_limit)
-        pkg_lock_2.append(lock)
+        pkg_power_limit_2.append(power_limit if power_limit is not None else "N/A")
+        pkg_enable_2.append(enable if enable is not None else "N/A")
+        pkg_clamping_2.append(clamping if clamping is not None else "N/A")
+        pkg_time_limit_2.append(time_limit if time_limit is not None else "N/A")
+        pkg_lock_2.append(lock if lock is not None else "N/A")
     table_data += [pkg_power_limit_2, pkg_time_limit_2, pkg_enable_2, pkg_clamping_2, pkg_lock_2]
 
     dram_power_limit = ["DRAM power limit (W)"]
@@ -510,10 +510,10 @@ def print_conf():
     dram_lock = ["DRAM lock"]
     for s in range(num_skt):
         power_limit, enable, clamping, time_limit, lock = read_dram_rapl(s)
-        dram_power_limit.append(power_limit)
-        dram_enable.append(enable)
-        dram_time_limit.append(time_limit)
-        dram_lock.append(lock)
+        dram_power_limit.append(power_limit if power_limit is not None else "N/A")
+        dram_enable.append(enable if enable is not None else "N/A")
+        dram_time_limit.append(time_limit if time_limit is not None else "N/A")
+        dram_lock.append(lock if lock is not None else "N/A")
     table_data += [dram_power_limit, dram_time_limit, dram_enable, dram_lock]
 
     pp0_power_limit = ["PP0 power limit (W)"]
@@ -524,12 +524,12 @@ def print_conf():
     pp0_lock = ["PP0 lock"]
     for s in range(num_skt):
         power_limit, enable, clamping, time_limit, lock, priority_level = read_pp0_rapl(s)
-        pp0_power_limit.append(power_limit)
-        pp0_enable.append(enable)
-        pp0_clamping.append(clamping)
-        pp0_time_limit.append(time_limit)
-        pp0_lock.append(lock)
-        pp0_priority_level.append(priority_level)
+        pp0_power_limit.append(power_limit if power_limit is not None else "N/A")
+        pp0_enable.append(enable if enable is not None else "N/A")
+        pp0_clamping.append(clamping if clamping is not None else "N/A")
+        pp0_time_limit.append(time_limit if time_limit is not None else "N/A")
+        pp0_lock.append(lock if lock is not None else "N/A")
+        pp0_priority_level.append(priority_level if priority_level is not None else "N/A")
     table_data += [pp0_power_limit, pp0_time_limit, pp0_enable, pp0_clamping, pp0_priority_level, pp0_lock]
 
     pp1_power_limit = ["PP1 power limit (W)"]
@@ -540,12 +540,12 @@ def print_conf():
     pp1_lock = ["PP1 lock"]
     for s in range(num_skt):
         power_limit, enable, clamping, time_limit, lock, priority_level = read_pp1_rapl(s)
-        pp1_power_limit.append(power_limit)
-        pp1_enable.append(enable)
-        pp1_clamping.append(clamping)
-        pp1_time_limit.append(time_limit)
-        pp1_lock.append(lock)
-        pp1_priority_level.append(priority_level)
+        pp1_power_limit.append(power_limit if power_limit is not None else "N/A")
+        pp1_enable.append(enable if enable is not None else "N/A")
+        pp1_clamping.append(clamping if clamping is not None else "N/A")
+        pp1_time_limit.append(time_limit if time_limit is not None else "N/A")
+        pp1_lock.append(lock if lock is not None else "N/A")
+        pp1_priority_level.append(priority_level if priority_level is not None else "N/A")
     table_data += [pp1_power_limit, pp1_time_limit, pp1_enable, pp1_clamping, pp1_priority_level, pp1_lock]
 
     table = AsciiTable(table_data)
@@ -561,15 +561,15 @@ def print_conf():
     table_data.append(["Power units (mW)", power_unit * 1000])
     table_data.append(["Energy units (uJ)", energy_unit * 1000000])
 
-    table_data.append(["PKG Thermal Spec Power (W)", pkg_thermal_spec_power])
-    table_data.append(["PKG Minimum Power (W)", pkg_minimum_power])
-    table_data.append(["PKG Maximum Power (W)", pkg_maximum_power])
-    table_data.append(["PKG Maximum Time Window (ms)", pkg_maximum_time_windows * 1000 if pkg_maximum_time_windows is not None else None])
+    table_data.append(["PKG Thermal Spec Power (W)", pkg_thermal_spec_power if pkg_thermal_spec_power is not None else "N/A"])
+    table_data.append(["PKG Minimum Power (W)", pkg_minimum_power if pkg_minimum_power is not None else "N/A"])
+    table_data.append(["PKG Maximum Power (W)", pkg_maximum_power if pkg_maximum_power is not None else "N/A"])
+    table_data.append(["PKG Maximum Time Window (ms)", pkg_maximum_time_windows * 1000 if pkg_maximum_time_windows is not None else "N/A"])
 
-    table_data.append(["DRAM Thermal Spec Power (W)", dram_thermal_spec_power])
-    table_data.append(["DRAM Minimum Power (W)", dram_minimum_power])
-    table_data.append(["DRAM Maximum Power (W)", dram_maximum_power])
-    table_data.append(["DRAM Maximum Time Window (ms)", dram_maximum_time_windows * 1000 if dram_maximum_time_windows is not None else None])
+    table_data.append(["DRAM Thermal Spec Power (W)", dram_thermal_spec_power if dram_thermal_spec_power is not None else "N/A"])
+    table_data.append(["DRAM Minimum Power (W)", dram_minimum_power if dram_minimum_power is not None else "N/A"])
+    table_data.append(["DRAM Maximum Power (W)", dram_maximum_power if dram_maximum_power is not None else "N/A"])
+    table_data.append(["DRAM Maximum Time Window (ms)", dram_maximum_time_windows * 1000 if dram_maximum_time_windows is not None else "N/A"])
 
     table = AsciiTable(table_data)
     print table.table
@@ -590,13 +590,27 @@ def print_conf():
     pp0_throttled = ["PP0 throttled time (s)"]
     pp1_energy = ["PP1 energy (J)"]
     for s in range(num_skt):
-        pkg_energy.append(read_pkg_pc_energy(s))
-        pkg_throttled.append(read_pkg_pc_throttled_time(s))
-        dram_energy.append(read_dram_pc_energy(s))
-        dram_throttled.append(read_dram_pc_throttled_time(s))
-        pp0_energy.append(read_pp0_pc_energy(s))
-        pp0_throttled.append(read_pp0_pc_throttled_time(s))
-        pp1_energy.append(read_pp1_pc_energy(s))
+	pkg_pc_energy = read_pkg_pc_energy(s)
+        pkg_energy.append(pkg_pc_energy if pkg_pc_energy is not None else "N/A")
+
+	pkg_pc_throttled_time = read_pkg_pc_throttled_time(s)
+        pkg_throttled.append(pkg_pc_throttled_time if pkg_pc_throttled_time is not None else "N/A")
+
+	dram_pc_energy = read_dram_pc_energy(s)
+        dram_energy.append(dram_pc_energy if dram_pc_energy is not None else "N/A")
+
+	dram_pc_throttled_time = read_dram_pc_throttled_time(s)
+        dram_throttled.append(dram_pc_throttled_time if dram_pc_throttled_time is not None else "N/A")
+
+	pp0_pc_energy = read_pp0_pc_energy(s)
+        pp0_energy.append(pp0_pc_energy if pp0_pc_energy is not None else "N/A")
+
+	pp0_pc_throttled_time = read_pp0_pc_throttled_time(s)
+        pp0_throttled.append(pp0_pc_throttled_time if pp0_pc_throttled_time is not None else "N/A")
+
+	pp1_pc_energy = read_pp1_pc_energy(s)
+        pp1_energy.append(pp1_pc_energy if pp1_pc_energy is not None else "N/A")
+
     table_data += [pkg_energy, pkg_throttled, dram_energy, dram_throttled, pp0_energy, pp0_throttled, pp1_energy]
 
     table = AsciiTable(table_data)
@@ -608,25 +622,21 @@ if __name__ == "__main__":
     init_config()
 
     parser = argparse.ArgumentParser(description='Tool for RAPL setting')
-    parser.add_argument('-r','--reset', help='Reset RAPL at maximum limit', required=False, action='store_true', default=False)
-    parser.add_argument('-s','--socket', help='Select socket to modify', required=False, type=int, choices=xrange(0, num_skt))
-    parser.add_argument('-p','--power-lane', help='Select the power lane to modify', required=False, choices=power_lanes)
-    parser.add_argument('-l','--power-limit', help='Set power limit in Watts', required=False, type=float)
-    parser.add_argument('-t','--time-window', help='Set time window in ms', required=False, type=float)
-    parser.add_argument('-el','--enable-limit', help='Force enable power limit', required=False, action='store_true', default=False)
-    parser.add_argument('-dl','--disable-limit', help='Force disable power limit', required=False, action='store_true', default=False)
-    parser.add_argument('-ec','--enable-clamping', help='Force enable clamping limit', required=False, action='store_true', default=False)
-    parser.add_argument('-dc','--disable-clamping', help='Force disable clamping limit', required=False, action='store_true', default=False)
+    parser.add_argument('-s','--socket', help='Select the socket (default: all the sockets)', required=False, type=int, choices=xrange(0, num_skt))
+    parser.add_argument('-p','--power-lane', help='Select the power lane', required=False, choices=power_lanes)
+    parser.add_argument('-l','--power-limit', help='Set power limit (Watts)', required=False, type=float)
+    parser.add_argument('-t','--time-window', help='Set time window (ms)', required=False, type=float)
+    parser.add_argument('-el','--enable-limit', help='Force enable to power limit', required=False, action='store_true', default=False)
+    parser.add_argument('-dl','--disable-limit', help='Force disable to power limit', required=False, action='store_true', default=False)
+    parser.add_argument('-ec','--enable-clamping', help='Force enable to clamping limit', required=False, action='store_true', default=False)
+    parser.add_argument('-dc','--disable-clamping', help='Force disable to clamping limit', required=False, action='store_true', default=False)
     parser.add_argument('-sl','--set-lock', help='Set lock for power lane (WARNING: all write attempts are ignored until next RESET!)', required=False, action='store_true', default=False)
-    parser.add_argument('-pl','--priority-level', help='Select the priority level for the power lane', required=False, type=int, choices=xrange(15))
+    parser.add_argument('-pl','--priority-level', help='Select the priority level', required=False, type=int, choices=xrange(17))
     args = parser.parse_args()
 
     if len(sys.argv) == 1:
         print_conf()
     else:
-        if args.reset is True:
-            print "reset"
-
         if args.power_lane is not None:
             sockets = []
 
