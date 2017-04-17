@@ -18,12 +18,12 @@ Install
  
 2) Make sure that the msr driver is loaded::
 
-   $> sudo modprobe msr
+   >$ sudo modprobe msr
 
-3) Install terminaltables module for python
+3) Install terminaltables module for python::
 
-    $> sudo pip install terminaltables
+   >$ sudo pip install terminaltables
 
-4) Run the script with root permissions
+4) Run the script with root permissions::
 
-    $> sudo ./rapl-set
+   >$ sudo ./rapl-set
