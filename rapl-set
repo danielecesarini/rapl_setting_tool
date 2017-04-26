@@ -10,7 +10,7 @@ from terminaltables import AsciiTable
 num_core = 0
 num_skt = 0
 num_core_skt = 0
-power_lanes = ["PKG1", "PKG2", "DRAM", "PP0", "PP1"]
+power_lanes = ["pkg1", "pkg2", "dram", "pp0", "pp1"]
 
 ############## ARCHITECTURE INFO ##############
 power_unit = None
@@ -303,30 +303,30 @@ def set_power_limit(skt, power_lane, power_limit):
     power_cap_rapl = int(round(power_limit / power_unit))
 
     # Set only bits related to power limit
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
 
     if msr_rapl is None:
         return
 
-    if "PKG2" in power_lane:
+    if "pkg2" in power_lane:
         msr_rapl = (msr_rapl & ~0x7FFF00000000) | (power_cap_rapl << 32)
     else:
         msr_rapl = (msr_rapl & ~0x7FFF) | power_cap_rapl
 
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
 
 # Set RAPL time window in ms
@@ -336,42 +336,42 @@ def set_time_window(skt, power_lane, time_window):
     time_window_rapl = int(round(time_window_sec / time_unit))
 
     # Set only bits related to power limit
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
 
     if msr_rapl is None:
         return
 
-    if "PKG2" in power_lane:
+    if "pkg2" in power_lane:
         msr_rapl = (msr_rapl & ~0xFE000000000000) | (time_window_rapl << 49)
     else:
         msr_rapl = (msr_rapl & ~0xFE0000) | (time_window_rapl << 17)
 
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
 
 # Set RAPL enable limit
 def set_enable_limit(skt, power_lane, setting):
     # Set only bits related to power limit
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
 
     if msr_rapl is None:
@@ -379,29 +379,29 @@ def set_enable_limit(skt, power_lane, setting):
 
     setting_rapl = 0x1 if setting is True else 0x0
 
-    if "PKG2" in power_lane:
+    if "pkg2" in power_lane:
         msr_rapl = (msr_rapl & ~0x800000000000) | (setting_rapl << 47)
     else:
         msr_rapl = (msr_rapl & ~0x8000) | (setting_rapl << 15)
 
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
 
 # Set RAPL clamping limit
 def set_clamping_limit(skt, power_lane, setting):
     # Set only bits related to power limit
     msr_rapl = None
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
 
     if msr_rapl is None:
@@ -409,52 +409,52 @@ def set_clamping_limit(skt, power_lane, setting):
 
     setting_rapl = 0x1 if setting is True else 0x0
 
-    if "PKG2" in power_lane:
+    if "pkg2" in power_lane:
         msr_rapl = (msr_rapl & ~0x1000000000000) | (setting_rapl << 48)
     else:
         msr_rapl = (msr_rapl & ~0x10000) | (setting_rapl << 16)
 
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
 
 # Set RAPL lock
 def set_lock(skt, power_lane):
     # Set only bits related to power limit
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         msr_rapl = read_msr(MSR_PKG_POWER_LIMIT, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         msr_rapl = read_msr(MSR_DRAM_POWER_LIMIT, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POWER_LIMIT, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POWER_LIMIT, skt)
 
     if msr_rapl is None:
         return
 
-    if "PKG2" in power_lane:
+    if "pkg2" in power_lane:
         msr_rapl = (msr_rapl & ~0x8000000000000000) | (0x1 << 63)
     else:
         msr_rapl = (msr_rapl & ~0x80000000) | (0x1 << 31)
 
-    if "PKG1" in power_lane or "PKG2" in power_lane:
+    if "pkg1" in power_lane or "pkg2" in power_lane:
         write_msr(MSR_PKG_POWER_LIMIT, msr_rapl, skt)
-    elif "DRAM" in power_lane:
+    elif "dram" in power_lane:
         write_msr(MSR_DRAM_POWER_LIMIT, msr_rapl, skt)
-    elif "PP0" in power_lane:
+    elif "pp0" in power_lane:
         write_msr(MSR_PP0_POWER_LIMIT, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POWER_LIMIT, msr_rapl, skt)
 
 def set_priority_level(skt, power_lane, priority_level):
     # Set only bits related to power limit
-    if "PP0" in power_lane:
+    if "pp0" in power_lane:
         msr_rapl = read_msr(MSR_PP0_POLICY, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         msr_rapl = read_msr(MSR_PP1_POLICY, skt)
 
     if msr_rapl is None:
@@ -462,9 +462,9 @@ def set_priority_level(skt, power_lane, priority_level):
 
     msr_rapl = (msr_rapl & ~0xF) | priority_level
 
-    if "PP0" in power_lane:
+    if "pp0" in power_lane:
         write_msr(MSR_PP0_POLICY, msr_rapl, skt)
-    elif "PP1" in power_lane:
+    elif "pp1" in power_lane:
         write_msr(MSR_PP1_POLICY, msr_rapl, skt)
 
 def print_conf():
