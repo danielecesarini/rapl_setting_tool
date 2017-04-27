@@ -57,6 +57,16 @@ MSR_PP1_POLICY = 0x642
 
 ##################################################
 
+def my_round(n, base):
+    err = n % base
+    min_round = n - err
+    max_rount = min_round + err
+
+    if (max_rount - n) < (n - min_round):
+        return max_rount
+    else:
+        return min_round
+
 # Read a MSR registry
 def read_msr(msr, skt=None, core=None):
     cpu = None
@@ -299,8 +309,8 @@ def read_pp1_pc_energy(skt):
 
 # Set RAPL power limit in Watts
 def set_power_limit(skt, power_lane, power_limit):
-    # Convert to RAPL unit      
-    power_cap_rapl = int(round(power_limit / power_unit))
+    # Convert to RAPL unit
+    power_cap_rapl = int(my_round(power_limit, power_unit) / power_unit)
 
     # Set only bits related to power limit
     if "pkg1" in power_lane or "pkg2" in power_lane:
@@ -333,7 +343,7 @@ def set_power_limit(skt, power_lane, power_limit):
 def set_time_window(skt, power_lane, time_window):
     # Convert to RAPL unit
     time_window_sec = time_window / 1000.0
-    time_window_rapl = int(round(time_window_sec / time_unit))
+    time_window_rapl = int(my_round(time_window_sec, time_unit) / time_unit)
 
     # Set only bits related to power limit
     if "pkg1" in power_lane or "pkg2" in power_lane:
